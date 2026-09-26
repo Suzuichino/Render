@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: starlink-scanner-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.11
+      - key: BOT_PORT
+        value: 8099
