@@ -3,7 +3,6 @@ from telebot.async_telebot import AsyncTeleBot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiohttp import web
 import cv2
-import ddddocr
 import numpy as np
 from datetime import datetime, timedelta, timezone
 
