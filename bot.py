@@ -13,7 +13,7 @@ REPO_OWNER = "Suzuichino"
 REPO_NAME = "Render"
 
 ADMINS = [
-    "668037630",
+    "6686037630",
     ""
 ]
 
