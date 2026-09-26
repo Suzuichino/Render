@@ -1798,10 +1798,6 @@ async def Code_Expires_Date(active_id):
                 
     return "🀄️ Plan: Unknown | ⏳ Time: Unknown", 'Unknown'
 
-
-_ocr = ddddocr.DdddOcr(show_ad=False)
-
-
 def _ocr_sync(image_bytes):
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
