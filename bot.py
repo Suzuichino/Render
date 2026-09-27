@@ -1590,37 +1590,46 @@ async def perform_check(session_url, code, chat_id, scan_id=None, recheck=False,
     ).decode()
 
     response = None
-    
     for _attempt in range(3):
-        timeout = aiohttp.ClientTimeout(total=30)
+        timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(
             connector=_connector,
             connector_owner=False,
             cookie_jar=aiohttp.CookieJar(),
             timeout=timeout
         ) as task_session:
-            session_id = await get_session_id(task_session, session_url, None)
-            if not session_id:
-                return
-            auth_code = None
-            for _ in range(8):
-                try:
-                    image = await Captcha_Image(task_session, session_id)
-                    text = await Captcha_Text(image)
-                    if not text:
-                        continue
-                    verified = await Varify_Captcha(task_session, session_id, text)
-                    if verified:
-                        auth_code = text
-                        break
-                except Exception as e:
-                    print(f"[perform_check] captcha error: {e}")
-            if not auth_code:
-                return
-            if not recheck:
-                current_task = scan_tasks.get(chat_id)
-                if not current_task or current_task.get("scan_id") != scan_id or current_task.get("stop"):
+            try:
+                session_id = await get_session_id(task_session, session_url, None)
+                if not session_id:
                     return
+                auth_code = None
+                for _ in range(8):
+                    try:
+                        # လိုင်းပိတ်မိပါက ၁၅ စက္ကန့်အတွင်း ကျော်ဖြတ်နိုင်ရန် wait_for အုပ်ပေးခြင်း
+                        image = await asyncio.wait_for(Captcha_Image(task_session, session_url), timeout=15)
+                        text = await Captcha_Text(image)
+                        if not text:
+                            continue
+                        verified = await asyncio.wait_for(Varify_Captcha(task_session, session_url, text), timeout=15)
+                        if verified:
+                            auth_code = text
+                            break
+                    except asyncio.TimeoutError:
+                        print("⚠️ Captcha Timeout! Retrying next loop...")
+                        continue
+                    except Exception as e:
+                        print(f"[perform_check] captcha error: {e}")
+            except Exception as e:
+                print(f"[perform_check] session error: {e}")
+                return
+
+        if not auth_code:
+            return
+        if not recheck:
+            current_task = scan_tasks.get(chat_id)
+            if not current_task or current_task.get("scan_id") != scan_id:
+                return
+
             data = {
                 "accessCode": code,
                 "sessionId": session_id,
