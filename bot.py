@@ -1591,7 +1591,7 @@ async def perform_check(session_url, code, chat_id, scan_id=None, recheck=False,
 
     response = None
         # စမ်းသပ်မည့်အကြိမ်ရေကို ၃ ကြိမ်မှ ၁ ကြိမ် သို့ ပြောင်းလဲပါ (ဆာဗာမတုံ့ပြန်ပါက ချက်ချင်းကျော်ရန်)
-    for _attempt in range(1):
+        for _attempt in range(1):
         timeout = aiohttp.ClientTimeout(total=15)
         async with aiohttp.ClientSession(
             connector=_connector,
@@ -1604,11 +1604,8 @@ async def perform_check(session_url, code, chat_id, scan_id=None, recheck=False,
                 if not session_id:
                     return
                 auth_code = None
-                
-                # Captcha စမ်းမည့်အကြိမ်ကို ၈ ကြိမ်မှ ၂ ကြိမ် သို့ လျှော့ချပါ
                 for _ in range(2):
                     try:
-                        # စောင့်ဆိုင်းချိန်ကိုလည်း ၁၅ စက္ကန့်မှ ၅ စက္ကန့်သို့ လျှော့ချပါ (၅ စက္ကန့်အတွင်း ပုံမကျလျှင် နောက်တစ်ဆင့် ချက်ချင်းသွားရန်)
                         image = await asyncio.wait_for(Captcha_Image(task_session, session_url), timeout=5)
                         text = await Captcha_Text(image)
                         if not text:
@@ -1622,8 +1619,17 @@ async def perform_check(session_url, code, chat_id, scan_id=None, recheck=False,
                         continue
                     except Exception as e:
                         print(f"[perform_check] captcha error: {e}")
-
+            except Exception as e:
+                print(f"[perform_check] session error: {e}")
                 return
+
+        if not auth_code:
+            return
+        if not recheck:
+            current_task = scan_tasks.get(chat_id)
+            if not current_task or current_task.get("scan_id") != scan_id:
+                return
+
 
         if not auth_code:
             return
