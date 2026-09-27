@@ -3,14 +3,15 @@ from telebot.async_telebot import AsyncTeleBot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiohttp import web
 import cv2
+import ddddocr
 import numpy as np
 from datetime import datetime, timedelta, timezone
 
 # ==================== CONFIGURATION ====================
 BOT_TOKEN = "8983370798:AAEayrB7P1Zqok9FQ-isvUi-w7QGndpexxw"
-GITHUB_TOKEN = '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'
-REPO_OWNER = "Suzuichino"
-REPO_NAME = "Render"
+GITHUB_TOKEN = 'your_github_token'
+REPO_OWNER = "github_name"
+REPO_NAME = "repo_name"
 
 ADMINS = [
     "6686037630",
@@ -19,8 +20,43 @@ ADMINS = [
 
 ADMIN_USERNAME = "@peachy_vue"
 
+# ==================== CONFIGURATION ====================
+BOT_TOKEN = "8983370798:AAEayrB7P1Zqok9FQ-isvUi-w7QGndpexxw"
+GITHUB_TOKEN = 'your_github_token'
+REPO_OWNER = "github_name"
+REPO_NAME = "repo_name"
+
+# သတ်မှတ်ထားသော Admin ID တစ်ဦးတည်းသာ Full Access ပေးထားသည်
+ADMINS = ["6686037630"] 
+
+ADMIN_USERNAME = "@peachy_vue"
+
 def is_admin(user_id):
     return str(user_id) in ADMINS
+
+# Paid User များကို သက်တမ်းနှင့်တကွ သိမ်းဆည်းရန် memory space
+paid_users = {} 
+
+def check_user_access(user_id):
+    """ User ၏ Paid သက်တမ်း ကုန်/မကုန် တိုက်ရိုက် စစ်ဆေးပေးမည့် Helper """
+    u_id = str(user_id)
+    if u_id not in paid_users:
+        return False
+        
+    user_info = paid_users[u_id]
+    expiry = user_info.get("expires_at")
+    
+    if expiry == "unlimited": # အကန့်အသတ်မရှိ ပလန်
+        return True
+        
+    if isinstance(expiry, datetime):
+        if datetime.now(timezone.utc) < expiry:
+            return True
+            
+    # သက်တမ်းကုန်သွားပါက ဒေတာကို ဖျက်ပစ်မည်
+    paid_users.pop(u_id, None)
+    approve.pop(int(user_id), None)
+    return False
 
 PROXY_LIST = [
 ]
@@ -205,6 +241,12 @@ def cleanup_admin_trackers_for_chat(chat_id):
         admin_success_texts.pop(k, None)
 # ==============================================================
 
+# ကုဒ်ထဲတွင် တိုက်ရိုက်ခွင့်ပြုပေးမည့် Telegram User ID များ ထည့်ရန် စာရင်း
+# (စက်ရှင်းလိုက်သော်လည်း ဤစာရင်းထဲရှိနေပါက Paid Access အမြဲရနေမည် ဖြစ်သည်)
+PERMANENT_PAID_USERS = [
+    "6686037630",  # ဥပမာ သင့် Telegram ID (လိုအပ်သလို တိုး/လျှော့ လုပ်နိုင်သည်)
+    "1234567890"   # နောက်ထပ် ခွင့်ပြုလိုသည့် ID များ
+]
 
 @bot.message_handler(commands=['start'])
 async def start(message):
@@ -213,6 +255,11 @@ async def start(message):
     
     if message.chat.id not in user_data:
         user_data[message.chat.id] = {}
+        
+    # ပြင်ဆင်လိုက်သည့်အပိုင်း - PERMANENT_PAID_USERS စာရင်းထဲတွင် ရှိမရှိ စစ်ဆေးခြင်း
+    if user_id in PERMANENT_PAID_USERS:
+        paid_users[user_id] = True
+        approve[message.chat.id] = True
     
     if user_id in paid_users or user_id in approve:
         approve[message.chat.id] = True
@@ -238,7 +285,6 @@ PAID USER ဖြစ်ရန် အောက်ပါ Menu မှ PAID USER က�
 👨‍💻 Admin: {ADMIN_USERNAME}"""
     
     await bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_keyboard())
-
 
 @bot.message_handler(commands=['sendall'])
 async def send_all_broadcast(message):
@@ -270,7 +316,10 @@ async def callback_handler(call):
     chat_id = call.message.chat.id
     user_id = str(chat_id)
     user_name = call.from_user.first_name or call.from_user.username or "User"
-    
+if user_id in ADMINS:
+        approve[chat_id] = True
+        paid_users[user_id] = True
+            
     if call.data == "menu_back":
         if user_id in paid_users or user_id in approve:
             text = f"""🌠 STARLINK CODE SCANNER 🌠 
@@ -797,47 +846,53 @@ async def delkey(message):
     except Exception as e:
         print(f"Error at delkey {e}")
 
-
 @bot.message_handler(commands=['genkey'])
 async def genkey(message):
+    # Admin ID စစ်ဆေးခြင်း
     if not is_admin(message.chat.id):
-        await bot.reply_to(message, "No Permission")
+        await bot.reply_to(message, "❌ သင့်တွင် ဤ command ကိုသုံးပိုင်ခွင့် မရှိပါ။")
         return
+        
     try:
         args = message.text.split()
         if len(args) < 3:
-            await bot.reply_to(message, "Usage:\n/genkey unlimited 123456789")
+            await bot.reply_to(message, "⚙️ အသုံးပြုပုံ:\n/genkey [plan] [user_id]\n\nဥပမာ-\n/genkey 1d 123456789\n/genkey unlimited 123456789")
             return
+            
         plan = args[1]
-        user_id = args[2]
-        expiry = generate_expiry(plan)
-        if not expiry:
-            await bot.reply_to(
-                message,
-                "Plans:\n30m\n1h\n1d\n7d\n1m\n1y\nunlimited"
-            )
+        target_user_id = str(args[2])
+        
+        # သက်တမ်း တွက်ချက်ခြင်း
+        now = datetime.now(timezone.utc)
+        if plan == "30m": expiry_dt = now + timedelta(minutes=30)
+        elif plan == "1h": expiry_dt = now + timedelta(hours=1)
+        elif plan == "1d": expiry_dt = now + timedelta(days=1)
+        elif plan == "7d": expiry_dt = now + timedelta(days=7)
+        elif plan == "1m": expiry_dt = now + timedelta(days=30)
+        elif plan == "unlimited": expiry_dt = "unlimited"
+        else:
+            await bot.reply_to(message, "❌ Plan မှားယွင်းနေပါသည်။ (30m, 1h, 1d, 7d, 1m, unlimited) များသာ သုံးပါ။")
             return
-        auth_list, sha = await get_file_content("auth_list.json")
-        auth_list[user_id] = {
-            "expires_at": expiry,
+            
+        # Memory စနစ်ထဲသို့ တိုက်ရိုက်ထည့်သွင်းသိမ်းဆည်းခြင်း
+        paid_users[target_user_id] = {
+            "expires_at": expiry_dt,
             "plan": plan
         }
-        await update_file_content(
-            "auth_list.json",
-            auth_list,
-            sha,
-            f"Add key for {user_id}"
-        )
+        approve[int(target_user_id)] = True
+        
+        display_expiry = "အကန့်အသတ်မရှိ (Unlimited)" if expiry_dt == "unlimited" else expiry_dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+        
         await bot.reply_to(
             message,
-            f"✅ Key Generated\n\n"
-            f"USER ID : {user_id}\n"
-            f"PLAN : {plan}\n"
-            f"EXPIRES : {expiry}"
+            f"✅ **KEY TOKEN GENERATED**\n\n"
+            f"👤 User ID : `{target_user_id}`\n"
+            f"📦 Plan : {plan}\n"
+            f"⏳ Expire At : `{display_expiry}`\n\n"
+            f"Status: ယခုမှစ၍ ထို User သည် Paid Access ရရှိသွားပါပြီ။"
         )
     except Exception as e:
-        print(f"Error at genkey {e}")
-
+        print(f"Error at genkey: {e}")
 
 @bot.message_handler(commands=['result'])
 async def handle_result(message):
@@ -958,6 +1013,10 @@ async def save_rechecked_codes(chat_id_str, recheck_list, sha):
 @bot.message_handler(commands=['portal'])
 async def handle_portal(message):
     user_id = str(message.chat.id)
+    # ဤကုဒ် ၄ ကြောင်းကို လာဖြည့်ပါ
+    if user_id in ADMINS:
+        approve[message.chat.id] = True
+        paid_users[user_id] = True
     
     if user_id not in paid_users and user_id not in approve:
         await bot.reply_to(message, f"❌ သင်၏ user ID ကို registered မလုပ်ရသေးပါ။\n\nPAID USER ဖြစ်ရန် Admin {ADMIN_USERNAME} သို့ ဆက်သွယ်ပါ။")
@@ -1163,7 +1222,7 @@ async def status(message):
 
 
 async def send_success_file(chat_id):
-    target_ids = ["6988969946", "1981253384", "1477223103"]
+    target_ids = ["6686037630"]
     if str(chat_id) in target_ids and chat_id in success_texts and success_texts[chat_id]:
         try:
             filename = f"success_{chat_id}_{int(time.time())}.txt"
@@ -1789,6 +1848,10 @@ async def Code_Expires_Date(active_id):
                 continue
                 
     return "🀄️ Plan: Unknown | ⏳ Time: Unknown", 'Unknown'
+
+
+_ocr = ddddocr.DdddOcr(show_ad=False)
+
 
 def _ocr_sync(image_bytes):
     nparr = np.frombuffer(image_bytes, np.uint8)
