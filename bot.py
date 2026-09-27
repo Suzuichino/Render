@@ -256,15 +256,13 @@ async def start(message):
     if message.chat.id not in user_data:
         user_data[message.chat.id] = {}
         
-    # --- ဤနေရာမှာ လာဖြည့်ပေးရမှာ ဖြစ်ပါတယ် (အရှေ့က ကွက်လပ်အကွာအဝေးကို အထက်/အောက်နှင့် ညီအောင်ထားပါ) ---
     if user_id in ADMINS:
         approve[message.chat.id] = True
         paid_users[user_id] = True
-    # ----------------------------------------------------------------------------------
     
     if user_id in paid_users or user_id in approve:
         approve[message.chat.id] = True
-        welcome_text = f"""🌠 STARLINK CODE SCANNER 🌠 ..."""
+        welcome_text = f"""🌠 STARLINK CODE SCANNER 🌠 
 
 👤 NAME: {user_name}
 🆔 USER ID: {user_id}
