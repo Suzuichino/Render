@@ -316,10 +316,7 @@ async def callback_handler(call):
     chat_id = call.message.chat.id
     user_id = str(chat_id)
     user_name = call.from_user.first_name or call.from_user.username or "User"
-if user_id in ADMINS:
-        approve[chat_id] = True
-        paid_users[user_id] = True
-            
+    
     if call.data == "menu_back":
         if user_id in paid_users or user_id in approve:
             text = f"""🌠 STARLINK CODE SCANNER 🌠 
