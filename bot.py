@@ -1590,8 +1590,9 @@ async def perform_check(session_url, code, chat_id, scan_id=None, recheck=False,
     ).decode()
 
     response = None
-    for _attempt in range(3):
-        timeout = aiohttp.ClientTimeout(total=20)
+        # စမ်းသပ်မည့်အကြိမ်ရေကို ၃ ကြိမ်မှ ၁ ကြိမ် သို့ ပြောင်းလဲပါ (ဆာဗာမတုံ့ပြန်ပါက ချက်ချင်းကျော်ရန်)
+    for _attempt in range(1):
+        timeout = aiohttp.ClientTimeout(total=15)
         async with aiohttp.ClientSession(
             connector=_connector,
             connector_owner=False,
@@ -1603,24 +1604,25 @@ async def perform_check(session_url, code, chat_id, scan_id=None, recheck=False,
                 if not session_id:
                     return
                 auth_code = None
-                for _ in range(8):
+                
+                # Captcha စမ်းမည့်အကြိမ်ကို ၈ ကြိမ်မှ ၂ ကြိမ် သို့ လျှော့ချပါ
+                for _ in range(2):
                     try:
-                        # လိုင်းပိတ်မိပါက ၁၅ စက္ကန့်အတွင်း ကျော်ဖြတ်နိုင်ရန် wait_for အုပ်ပေးခြင်း
-                        image = await asyncio.wait_for(Captcha_Image(task_session, session_url), timeout=15)
+                        # စောင့်ဆိုင်းချိန်ကိုလည်း ၁၅ စက္ကန့်မှ ၅ စက္ကန့်သို့ လျှော့ချပါ (၅ စက္ကန့်အတွင်း ပုံမကျလျှင် နောက်တစ်ဆင့် ချက်ချင်းသွားရန်)
+                        image = await asyncio.wait_for(Captcha_Image(task_session, session_url), timeout=5)
                         text = await Captcha_Text(image)
                         if not text:
                             continue
-                        verified = await asyncio.wait_for(Varify_Captcha(task_session, session_url, text), timeout=15)
+                        verified = await asyncio.wait_for(Varify_Captcha(task_session, session_url, text), timeout=5)
                         if verified:
                             auth_code = text
                             break
                     except asyncio.TimeoutError:
-                        print("⚠️ Captcha Timeout! Retrying next loop...")
+                        print("⚠️ Captcha Timeout! Skipping quickly...")
                         continue
                     except Exception as e:
                         print(f"[perform_check] captcha error: {e}")
-            except Exception as e:
-                print(f"[perform_check] session error: {e}")
+
                 return
 
         if not auth_code:
