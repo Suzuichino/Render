@@ -58,7 +58,14 @@ def check_user_access(user_id):
     approve.pop(int(user_id), None)
     return False
 
-PROXY_LIST = [
+PROXY_LIST = ["andrewms:adms555666@31.59.20.176:6754",
+    "andrewms:adms555666@198.105.121.200:6462",
+    "andrewms:adms555666@64.137.96.74:6641",
+    "andrewms:adms555666@198.23.243.226:6361",
+    "andrewms:adms555666@38.154.185.97:6370",
+    "andrewms:adms555666@142.111.67.146:5611",
+    "andrewms:adms555666@191.96.254.138:6185",
+    "andrewms:adms555666@31.58.9.4:6077",
 ]
 
 _proxy_index = 0
