@@ -1065,24 +1065,21 @@ async def check_session_url_improved(session_url, use_proxy=False):
     headers = {
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
-    proxy = get_next_proxy() if use_proxy else None [1]
+    proxy = get_next_proxy() if use_proxy else None
     try:
-        async with session.get(session_url, allow_redirects=True, headers=headers, proxy=proxy, timeout=10) as response: [1]
-            text = await response.text() [1]
-            if response.status < 400 or "ruijie" in text.lower() or "portal" in text.lower(): [1]
+        async with session.get(session_url, allow_redirects=True, headers=headers, proxy=proxy, timeout=10) as response:
+            text = await response.text()
+            if response.status < 400 or "ruijie" in text.lower() or "portal" in text.lower():
                 return True
-            return False
-    except:
-        return True  # Timeout သို့မဟုတ် Error တက်လျှင်လည်း Scan ဖတ်နိုင်ရန် True ပေးထားခြင်း
             
             final_url = str(response.url)
-            response_text = await response.text()
+            response_text = text
             
             if "sessionId" in final_url or "sessionId" in response_text:
                 return True
             
             portal_indicators = [
-                "portal-as.ruijienetworks.com",
+                "://ruijienetworks.com",
                 "maccauth",
                 "index.html",
                 "sessionId",
@@ -1100,9 +1097,7 @@ async def check_session_url_improved(session_url, use_proxy=False):
             ]
             
             for pattern in session_patterns:
-                if re.search(pattern, response_text, re.IGNORECASE):
-                    return True
-                if re.search(pattern, final_url, re.IGNORECASE):
+                if re.search(pattern, response_text, re.IGNORECASE) or re.search(pattern, final_url, re.IGNORECASE):
                     return True
             
             if "portal" in response_text.lower() or "captcha" in response_text.lower():
@@ -1116,8 +1111,7 @@ async def check_session_url_improved(session_url, use_proxy=False):
     except Exception as e:
         print(f"Portal check error: {e}")
         return False
-
-
+            
 @bot.message_handler(commands=['scan'])
 async def handle_key_scan(message):
     args = message.text.split(maxsplit=1)
